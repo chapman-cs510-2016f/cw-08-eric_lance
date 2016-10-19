@@ -6,6 +6,7 @@ import csv                # for I/O with csv format files
 import json               # for I/O with json formatted data
 import abscplane as absc
 import matplotlib.pyplot as plt
+import numba as nb        # Just-In-Time compilation
 
 class ComplexPlaneNP(absc.AbsComplexPlane):
     """This is the Class ComplexPlaneNP.  It is built from the Abstract Class AbsComplexPlane.
@@ -21,7 +22,7 @@ class ComplexPlaneNP(absc.AbsComplexPlane):
     The contents of each 'cell' in the ComplexPlaneNP is of type imaginary number.
     """
 
-    def __init__(self, newXmin=-5., newXmax=5., newYmin=-5., newYmax=5., f=lambda x: x, maxLoop=100):
+    def __init__(self, newXmin=-5., newXmax=5., newXlen=1001, newYmin=-5., newYmax=5., newYlen=1001, f=lambda x: x, maxLoop=100):
         """This is the creator.  It can be passed the the min/max X and Y values for the plane,
         and a transformation function (f).  There are default values if the parameters are not
         passed to the creator.
@@ -35,8 +36,8 @@ class ComplexPlaneNP(absc.AbsComplexPlane):
         self.xmax = newXmax
         self.ymin = newYmin
         self.ymax = newYmax
-        self.xlen = 1001
-        self.ylen = 1001
+        self.xlen = newXlen
+        self.ylen = newYlen
         #  must sub 1 to get the correct actual step size, otherwise last element does not equal x or y max
         self.xstep = (self.xmax - self.xmin)/(self.xlen - 1)
         self.ystep = (self.ymax - self.ymin)/(self.ylen - 1)
@@ -52,11 +53,11 @@ class ComplexPlaneNP(absc.AbsComplexPlane):
         For every point (x + y*1j) in self.plane, replace
         the point with the value self.f(x + y*1j). 
         """
-        planeArray = np.zeros([self.xlen,self.ylen])
-        for xpos in range(self.xlen):
-            for ypos in range(self.ylen):
-                #  compute the value at each of the coordinate points in the plane
-                planeArray[(self.ylen-ypos-1),xpos] = self.f( (xpos*self.xstep+self.xmin) + (ypos*self.ystep+self.ymin)*1j )
+        rx = np.linspace( self.xmin, self.xmax, self.xlen )
+        ry = np.linspace( self.ymin, self.ymax, self.ylen )
+        x, y = np.meshgrid( rx, ry )
+        planeArray = x + y*1j
+        self.f( planeArray )
         ylabels = [str(self.ymax-ypos*self.ystep) for ypos in range(self.ylen)]
         xlabels = [str(xpos*self.xstep+self.xmin) for xpos in range(self.xlen)]
         self.plane = pd.DataFrame(planeArray, index=ylabels, columns=xlabels)
@@ -97,7 +98,7 @@ class JuliaPlane(ComplexPlaneNP):
     The contents of each 'cell' in the JuliaPlane is of type integer.
     """
 
-    def __init__(self, newXmin=-5., newXmax=5., newYmin=-5., newYmax=5., c=(-1.037 + 0.17j), maxLoop=100):
+    def __init__(self, newXmin=-5., newXmax=5., newXlen=11, newYmin=-5., newYmax=5., newYlen=11, c=(-1.037 + 0.17j), maxLoop=100):
         """ The JuliaPlane creator method uses the ComplexPlaneNP creator to generate the initial 2D plane.
         The function for this plane is then reset to a new function, and the values re-generated.
         Note that since this function was intially created, the f parameter was added to ComplexPlaneNP's
@@ -106,7 +107,7 @@ class JuliaPlane(ComplexPlaneNP):
         #  set the function and re-compute the plane's values
         f = julia(c, maxLoop)
         self.c = c
-        ComplexPlaneNP.__init__(self, newXmin, newXmax, newYmin, newYmax, f, maxLoop)
+        ComplexPlaneNP.__init__(self, newXmin, newXmax, newXlen, newYmin, newYmax, newYlen, f, maxLoop)
 
     def show(self, chosenmap=plt.cm.hot):
         """This method plots an image of the contents of the 2D complex plane.  The numbers in the plane
@@ -235,8 +236,96 @@ class JuliaPlane(ComplexPlaneNP):
             #  we're done, clean up the file
             jsonfile.close()
 
+class JuliaPlaneNV(JuliaPlane):
+    """This is the Class JuliaPlaneNV.  It is built from the Class JuliaPlane, but is not vectorized.
+    This Class serves as a simplistic pan/zoom over a 2D complex plane, where each point in the
+    plane undergoes a transformation through a function f() created by a call to the function julia().
+    This transformation function returns an integer, which is stored in the JuliaPlane.
+    NOTE that the julia function is included in this source file, but is not part of the JuliaPlaneNV()
+    class.
+
+    The contents of each 'cell' in the JuliaPlane is of type integer.
+    """
+    def __init__(self, newXmin=-5., newXmax=5., newXlen=11, newYmin=-5., newYmax=5., newYlen=11, c=(-1.037 + 0.17j), maxLoop=100):
+        """ The JuliaPlane creator method uses the ComplexPlaneNP creator to generate the initial 2D plane.
+        The function for this plane is then reset to a new function, and the values re-generated.
+        Note that since this function was intially created, the f parameter was added to ComplexPlaneNP's
+        creator, but this code was not updated to take advantage of the passed parameter change.
+        """
+        #  set the function and re-compute the plane's values
+        f = juliaNV(c, maxLoop)
+        self.c = c
+        ComplexPlaneNP.__init__(self, newXmin, newXmax, newXlen, newYmin, newYmax, newYlen, f, maxLoop)
+
+    def refresh(self):
+        """Regenerate complex plane.
+        For every point (x + y*1j) in self.plane, replace
+        the point with the value self.f(x + y*1j). 
+        """
+        planeArray = np.zeros([self.xlen,self.ylen])
+        for xpos in range(self.xlen):
+            for ypos in range(self.ylen):
+                #  compute the value at each of the coordinate points in the plane
+                planeArray[(self.ylen-ypos-1),xpos] = self.f( (xpos*self.xstep+self.xmin) + (ypos*self.ystep+self.ymin)*1j )
+        ylabels = [str(self.ymax-ypos*self.ystep) for ypos in range(self.ylen)]
+        xlabels = [str(xpos*self.xstep+self.xmin) for xpos in range(self.xlen)]
+        self.plane = pd.DataFrame(planeArray, index=ylabels, columns=xlabels)
+
+    def set_f(self, c, max=100):
+        """This method is used to set the transformation function in the ComplexPlane for this JuliaPlane.
+        The function julia is currently not a member of JuliaPlane.
+        This method sets the complex value 'c' in the julia function and defaults to a maximum iteration count
+        of 100.
+        """
+        self.c = c  # keep a copy for the CSV and JSON output
+        self.f = juliaNV(c, max)
+        self.refresh()
+
 
 def julia(c, max=100):
+    """This method creates and returns a function, f.  The parameters passed to julia are:
+    c - an imagery valued constant that is used in the function f.
+    max - an optional argument that sets the maximum loop count within f.  Default is 100.
+
+    The function f requires a single parameter:
+    z - an imaginary number
+
+    f then performs the operation z = z**2 + c on the z passed to f along with the c value passed to julia.
+    The operation is performed up to max times.
+    The function f returns:
+    1 - if the magnitude of the imagiary number (z) passed in exceeds 2
+    n - count of the number of times the operation can be done *before* the magnitude of z exceeds 2
+    0 - if the max iterations through the loop is reached without the magnitude of z reaching 2
+
+    Note that f's return value of 1 is ambiguous:  it could be because the initial z was too large,
+    or because the operation could be performed once successfully.
+    """
+    #  this decorator causes this function definition to be JIT
+    @nb.vectorize([nb.int32(nb.complex128)])
+    def f(z):
+        # check to see if the input is already too big
+        if abs( z ) <= 2:
+            n = 0
+            while abs(z)<=2:
+                #  perform the operation
+                z = z**2 + c
+                #  have we exceeded our max loop count-1?
+                if n >= max:
+                    n = 1
+                    break
+                #  count the number of times through the loop
+                n+=1
+            n -= 1  # subtract one to count the total loops *before* exceeding 2, also reports 0 if max loop reached
+        else:
+            #  report input too big
+            n = 1
+        return n
+
+    #  return the function pointer to the caller of the julia() method
+    return f
+
+
+def juliaNV(c, max=100):
     """This method creates and returns a function, f.  The parameters passed to julia are:
     c - an imagery valued constant that is used in the function f.
     max - an optional argument that sets the maximum loop count within f.  Default is 100.

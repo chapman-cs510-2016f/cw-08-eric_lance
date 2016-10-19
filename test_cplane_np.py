@@ -131,7 +131,7 @@ def test_init():
         ymax = -2
         xlen = 1001
         ylen = 1001
-        testPlane = jp.JuliaPlane( xmin, xmax, ymin, ymax, xlen, ylen )
+        testPlane = jp.JuliaPlane( xmin, xmax, xlen, ymin, ymax, ylen )
 
         #  this line is to force an error to prov the test can fail
         # xmin = xmin + 1
@@ -156,7 +156,7 @@ def itest_setf1():
     c = 0.4 - 0.4j 
 
     #  create a plane
-    tp = jp.JuliaPlane( 0, 10, 0, 10, 21, 21 )
+    tp = jp.JuliaPlane( 0, 10, 21, 0, 10, 21 )
     #  set the function to use c
     tp.set_f( c )
 
@@ -182,23 +182,6 @@ def itest_setf1():
 
 
 
-def test_setf2():
-    """Set the transformation function to be something other than a function(), which should fail,
-    meaning the test was successful"""
-    #  create a plane
-    tp = jp.JuliaPlane( 1, 10, 1, 10 )
-
-    try:
-        #  set the function to be something other than a complex number
-        tp.set_f( tp )
-        message = 'Test Failed, succeeded in setting function to a non-complex value'
-        success = False
-    except TypeError:
-        """Test succeeds, exception generated"""
-        success = True
-
-    assert success, message
-
 def itest_zoom1():
     """Test the zoom function with valid values.  Zoom should move/reset the 2D plane to a known configuration"""
     # set up the expected plane
@@ -216,7 +199,7 @@ def itest_zoom1():
     eplane = [[f(( j*xstep + xmin ) + ( i*ystep + ymin )*1j) for i in range(ylen)] for j in range(xlen)]
 
     #  create a plane
-    tp = jp.JuliaPlane( 100, 200, -100, 0 )
+    tp = jp.JuliaPlane( 100, 200, 21, -100, 0, 21 )
     tp.zoom(xmin, xmax, ymin, ymax)
 
     #  do the expected and actual planes match?
@@ -227,7 +210,7 @@ def itest_zoom1():
 def test_zoom2():
     """Test the zoom function with invalid values.  Zoom should generate an exception"""
     #  create a plane
-    tp = jp.JuliaPlane( 100, 200, -100, 0 )
+    tp = jp.JuliaPlane( 100, 200, 21, -100, 0, 21 )
     try:
         tp.zoom( "one", 100, -1, 3)
         message = 'Test Failed, zoom did not catch use of an invalid parameter'
@@ -243,9 +226,9 @@ def test_zoom2():
 def itest_refresh1():
     """Test the refresh function.  Create a plane, corrupt the data in the plane, refresh and verify the data is once again correct"""
     #  create a plane
-    tp = jp.JuliaPlane( 100, 200, -100, 0 )
+    tp = jp.JuliaPlane( 100, 200, 21, -100, 0, 21 )
     #  create a duplicate plane
-    ep = jp.JuliaPlane( 100, 200, -100, 0 )
+    ep = jp.JuliaPlane( 100, 200, 21, -100, 0, 21 )
 
     #  corrupt the original test plane
     tp.plane = [[(-1) for i in range(tp.ylen)] for j in range(tp.xlen)]
